@@ -222,7 +222,7 @@ class SuccessResponseView(PaymentDetailsView):
             kwargs['basket'].id, self.payer_id, self.token)
 
         #place submission
-        submission = self.build_submission(basket=basket)
+        submission = self.build_submission(basket=kwargs['basket'])
         return self.submit(**submission)
     
         #return super(SuccessResponseView, self).get(request, *args, **kwargs)
