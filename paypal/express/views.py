@@ -146,7 +146,9 @@ class RedirectView(CheckoutSessionMixin, RedirectView):
         """
         Return any additional PayPal parameters
         """
-        return {}
+        return {
+            "NOSHIPPING": 1,
+            }
 
 
 class CancelResponseView(RedirectView):
@@ -219,7 +221,11 @@ class SuccessResponseView(PaymentDetailsView):
             "Basket #%s - showing preview with payer ID %s and token %s",
             kwargs['basket'].id, self.payer_id, self.token)
 
-        return super(SuccessResponseView, self).get(request, *args, **kwargs)
+        #place submission
+        submission = self.build_submission(basket=basket)
+        return self.submit(**submission)
+    
+        #return super(SuccessResponseView, self).get(request, *args, **kwargs)
 
     def load_frozen_basket(self, basket_id):
         # Lookup the frozen basket that this txn corresponds to
