@@ -15,6 +15,7 @@ from paypal import gateway
 from paypal import exceptions
 
 import requests, decimal
+from decimal import *
 
 # PayPal methods
 SET_EXPRESS_CHECKOUT = 'SetExpressCheckout'
@@ -176,8 +177,7 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
     if paypal_currency != currency:
         print('VALUTE DIFFERENTI converto', currency, 'in', paypal_currency)
         valute_differenti = True
-        currency = paypal_currency
-        
+
         conversione = decimal.Decimal('.25')
         try:
             url = ('https://currency-api.appspot.com/api/%s/%s.json') % (currency, paypal_currency)
@@ -185,16 +185,17 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
             conversione = decimal.Decimal(float(r.json()['rate']))
         except:
             pass
-    
-
+        
+        currency = paypal_currency
 
     # PayPal have an upper limit on transactions.  It's in dollars which is a
     # fiddly to work with.  Lazy solution - only check when dollars are used as
     # the PayPal currency.
     amount = basket.total_incl_tax
+    print('amount1', amount)
     if valute_differenti:
         amount = amount * conversione
-    
+    print('amount2',amount, conversione, amount*conversione)
     if currency == 'USD' and amount > 10000:
         msg = 'PayPal can only be used for orders up to 10000 USD'
         logger.error(msg)
