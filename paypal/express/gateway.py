@@ -14,6 +14,7 @@ from . import models, exceptions as express_exceptions
 from paypal import gateway
 from paypal import exceptions
 
+import requests, decimal
 
 # PayPal methods
 SET_EXPRESS_CHECKOUT = 'SetExpressCheckout'
@@ -167,10 +168,33 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
     # Remove None values
     params = dict((k, v) for k, v in _params.items() if v is not None)
 
+
+
+    paypal_currency = getattr(settings, 'PAYPAL_CURRENCY', 'EUR')
+    valute_differenti = False
+    conversione = 1.0
+    if paypal_currency != currency:
+        print('VALUTE DIFFERENTI converto', currency, 'in', paypal_currency)
+        valute_differenti = True
+        currency = paypal_currency
+        
+        conversione = decimal.Decimal('.25')
+        try:
+            url = ('https://currency-api.appspot.com/api/%s/%s.json') % (currency, paypal_currency)
+            r = requests.get(url)
+            conversione = decimal.Decimal(float(r.json()['rate']))
+        except:
+            pass
+    
+
+
     # PayPal have an upper limit on transactions.  It's in dollars which is a
     # fiddly to work with.  Lazy solution - only check when dollars are used as
     # the PayPal currency.
     amount = basket.total_incl_tax
+    if valute_differenti:
+        amount = amount * conversione
+    
     if currency == 'USD' and amount > 10000:
         msg = 'PayPal can only be used for orders up to 10000 USD'
         logger.error(msg)
@@ -203,8 +227,13 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
         params['L_PAYMENTREQUEST_0_DESC%d' % index] = desc
         # Note, we don't include discounts here - they are handled as separate
         # lines - see below
+        
+        prezzo_line = line.unit_price_incl_tax
+        if valute_differenti:
+            prezzo_line = prezzo_line * conversione    
         params['L_PAYMENTREQUEST_0_AMT%d' % index] = _format_currency(
-            line.unit_price_incl_tax)
+            prezzo_line)
+        
         params['L_PAYMENTREQUEST_0_QTY%d' % index] = line.quantity
 
     # If the order has discounts associated with it, the way PayPal suggests
@@ -219,8 +248,13 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
         name = _("Special Offer: %s") % discount['name']
         params['L_PAYMENTREQUEST_0_NAME%d' % index] = name
         params['L_PAYMENTREQUEST_0_DESC%d' % index] = _format_description(name)
+        
+        offerta = discount['discount']
+        if valute_differenti:
+            offerta = offerta * conversione
         params['L_PAYMENTREQUEST_0_AMT%d' % index] = _format_currency(
-            -discount['discount'])
+            -offerta)
+        
         params['L_PAYMENTREQUEST_0_QTY%d' % index] = 1
     for discount in basket.voucher_discounts:
         index += 1
@@ -228,16 +262,26 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
                             discount['voucher'].code)
         params['L_PAYMENTREQUEST_0_NAME%d' % index] = name
         params['L_PAYMENTREQUEST_0_DESC%d' % index] = _format_description(name)
+        
+        voucher = discount['discount']
+        if valute_differenti:
+            voucher = voucher * conversione
         params['L_PAYMENTREQUEST_0_AMT%d' % index] = _format_currency(
-            -discount['discount'])
+            -voucher)
+        
         params['L_PAYMENTREQUEST_0_QTY%d' % index] = 1
     for discount in basket.shipping_discounts:
         index += 1
         name = _("Shipping Offer: %s") % discount['name']
         params['L_PAYMENTREQUEST_0_NAME%d' % index] = name
         params['L_PAYMENTREQUEST_0_DESC%d' % index] = _format_description(name)
+        
+        sconto_spedizione = discount['discount']
+        if valute_differenti:
+            sconto_spedizione = sconto_spedizione * conversione
         params['L_PAYMENTREQUEST_0_AMT%d' % index] = _format_currency(
-            -discount['discount'])
+            -sconto_spedizione)
+        
         params['L_PAYMENTREQUEST_0_QTY%d' % index] = 1
 
     # We include tax in the prices rather than separately as that's how it's
@@ -254,8 +298,12 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
     #
     # Hence, if tax is to be shown then it has to be aggregated up to the order
     # level.
+    totale_carrello = basket.total_incl_tax
+    if valute_differenti:
+        totale_carrello = totale_carrello * conversione
     params['PAYMENTREQUEST_0_ITEMAMT'] = _format_currency(
-        basket.total_incl_tax)
+        totale_carrello)
+    
     params['PAYMENTREQUEST_0_TAXAMT'] = _format_currency(D('0.00'))
 
     # Instant update callback information
@@ -308,7 +356,10 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
     for index, method in enumerate(shipping_methods):
         is_default = index == 0
         params['L_SHIPPINGOPTIONISDEFAULT%d' % index] = 'true' if is_default else 'false'
+        
         charge = method.calculate(basket).incl_tax
+        if valute_differenti:
+            charge = charge * conversione
 
         if charge > max_charge:
             max_charge = charge
@@ -321,6 +372,9 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
     # Set shipping charge explicitly if it has been passed
     if shipping_method:
         charge = shipping_method.calculate(basket).incl_tax
+        if valute_differenti:
+            charge = charge * conversione
+            
         params['PAYMENTREQUEST_0_SHIPPINGAMT'] = _format_currency(charge)
         params['PAYMENTREQUEST_0_AMT'] += charge
 
