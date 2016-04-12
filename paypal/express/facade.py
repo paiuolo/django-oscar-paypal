@@ -49,6 +49,13 @@ def get_paypal_url(basket, shipping_methods, user=None, shipping_address=None,
         scheme, host, reverse('paypal-cancel-response', kwargs={
             'basket_id': basket.id}))
 
+
+    #sovrascrive url ritorno
+    _ret_url = getattr(settings, 'PAYPAL_RETURN_URL', False)
+    if _ret_url:
+        return_url = _ret_url.format(basket.id)
+
+
     # URL for updating shipping methods - we only use this if we have a set of
     # shipping methods to choose between.
     update_url = None
