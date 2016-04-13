@@ -17,6 +17,25 @@ from paypal import exceptions
 import requests, decimal
 from decimal import *
 
+from django.core.cache import cache
+
+
+def tasso_di_conversione(da, a):
+    _key = 'conversione_{0}_{1}'.format(da, a)
+    conversione = _el = cache.get(_key)
+    if not conversione:
+        try:
+            url = ('https://currency-api.appspot.com/api/%s/%s.json') % (da, a)
+            r = requests.get(url)
+            conversione = decimal.Decimal(float(r.json()['rate']))
+        except Exception as e:
+            print('eccezione conversione', e)
+            conversione = decimal.Decimal('1')
+        else:
+            cache.set(_key, conversione, 3600) 
+    return conversione
+
+
 # PayPal methods
 SET_EXPRESS_CHECKOUT = 'SetExpressCheckout'
 GET_EXPRESS_CHECKOUT = 'GetExpressCheckoutDetails'
@@ -177,15 +196,7 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
     if paypal_currency != currency:
         print('VALUTE DIFFERENTI converto', currency, 'in', paypal_currency)
         valute_differenti = True
-
-        conversione = decimal.Decimal('.25')
-        try:
-            url = ('https://currency-api.appspot.com/api/%s/%s.json') % (currency, paypal_currency)
-            r = requests.get(url)
-            conversione = decimal.Decimal(float(r.json()['rate']))
-        except:
-            pass
-        
+        conversione = tasso_di_conversione(currency, paypal_currency)
         currency = paypal_currency
 
     # PayPal have an upper limit on transactions.  It's in dollars which is a
